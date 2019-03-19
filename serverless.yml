@@ -1,0 +1,24 @@
+service:
+  name: panopticon
+
+# Add the serverless-webpack plugin
+plugins:
+  - serverless-plugin-typescript
+  - serverless-offline
+  - serverless-plugin-chrome
+
+package:
+  exclude:
+    - node_modules/puppeteer/.local-chromium/** # exclude puppeteer chrome if exists
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - http:
+          method: get
+          path: hello
