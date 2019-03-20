@@ -17,39 +17,36 @@ type ResembleOutput = {
 };
 
 type RouteOutput = {
-  route: string;
-  baseURL: string;
+  routePath: string;
+  passed: boolean;
+  successPercent: number;
   resembleOutput: ResembleOutput;
+  activeConfig: SiteConfig;
 };
 
 type PanopticonConfig = {
-  site: ConfigObject;
-  configs?: ConfigObject[];
+  site: SiteConfig;
+  configs?: SiteConfig[];
 };
 
-type Route = {
-  route: string;
-  timeout?: number;
-  delay?: number;
-  compareThreshold?: number;
-};
+type Route =
+  | string
+  | {
+      route: string;
+      failureThresholdPercentage?: number;
+    };
 
-type ConfigObject = {
+type SiteConfig = {
   baseURL: string;
+  failureThresholdPercentage?: number;
   routes: Route[];
 };
 
 const exampleConfig: PanopticonConfig = {
   site: {
     baseURL: "https://www.mycarfax.com",
-    routes: [
-      {
-        route: ""
-      },
-      {
-        route: "/help/faq"
-      }
-    ]
+    failureThresholdPercentage: 40,
+    routes: ["", "/help/faq"]
   }
 };
 
@@ -72,7 +69,7 @@ async function compareScreens(
         if (err) {
           reject(err);
         } else {
-          resolve(data);
+          resolve(data as ResembleOutput);
         }
       }
     );
@@ -133,8 +130,9 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
 
   await Promise.all(
     activeConfig.routes.map(async route => {
-      const path = getPicturePath(activeConfig.baseURL, route.route);
-      const url = `${activeConfig.baseURL}${route.route}`;
+      const routePath = typeof route == "string" ? route : route.route;
+      const path = getPicturePath(activeConfig.baseURL, routePath);
+      const url = `${activeConfig.baseURL}${route}`;
       await page.goto(url);
       const screenshot = await page.screenshot({
         fullPage: true
@@ -176,10 +174,46 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
           }
         );
 
+        let passed = true;
+
+        const successPercent =
+          100 - parseInt(resembleOutput.misMatchPercentage);
+
+        if (
+          activeConfig.failureThresholdPercentage &&
+          successPercent < activeConfig.failureThresholdPercentage
+        ) {
+          passed = false;
+        }
+
+        if (activeConfig.failureThresholdPercentage) {
+          console.log("activeConfig.failureThresholdPercentage");
+          console.log(
+            typeof successPercent,
+            typeof activeConfig.failureThresholdPercentage
+          );
+          console.log(successPercent, activeConfig.failureThresholdPercentage);
+          console.log(successPercent < activeConfig.failureThresholdPercentage);
+        }
+
+        if (typeof route !== "string") {
+          console.log(route.failureThresholdPercentage);
+        }
+
+        if (
+          typeof route !== "string" &&
+          route.failureThresholdPercentage &&
+          successPercent < route.failureThresholdPercentage
+        ) {
+          passed = false;
+        }
+
         allResults.push({
-          baseURL: activeConfig.baseURL,
-          route: route.route,
-          resembleOutput
+          successPercent,
+          resembleOutput,
+          passed,
+          routePath,
+          activeConfig
         });
       } catch (e) {
         console.error(e);
@@ -187,19 +221,39 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
     })
   );
 
+  await browser.close();
+
   let message = "Results:\n";
-  allResults.forEach(r => {
-    message += `${r.baseURL}${r.route}:\n`;
-    const percentSimilar = 100 - parseInt(r.resembleOutput.misMatchPercentage);
-    message += `${percentSimilar}% Similar\n`;
-    if (percentSimilar < 50) {
-      message += "Warning for this page\n";
-    }
-  });
+  const successful = allResults.filter(r => r.passed).length;
+  message += `${successful} / ${allResults.length} Passed\n`;
+  allResults
+    .filter(r => !r.passed)
+    .forEach(r => {
+      message += `${r.activeConfig.baseURL}${r.routePath} Failed:\n`;
+      message += `${r.successPercent}% similar to yesterday\n`;
+    });
 
   console.log(message);
 
-  await browser.close();
+  /*
+
+  const slackToken = "";
+  const slackChannelID = "";
+
+  const web = new WebClient(slackToken);
+
+  try {
+    const slackResponse = await web.chat.postMessage({
+      channel: slackChannelID,
+      text: message
+    });
+
+    console.log(slackResponse);
+  } catch (e) {
+    console.error(e);
+  }
+
+  */
 
   return {
     statusCode: 200,
