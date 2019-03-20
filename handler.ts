@@ -20,6 +20,7 @@ type RouteOutput = {
   routePath: string;
   passed: boolean;
   successPercent: number;
+  failureThreshold: number;
   resembleOutput: ResembleOutput;
   activeConfig: SiteConfig;
 };
@@ -45,7 +46,7 @@ type SiteConfig = {
 const exampleConfig: PanopticonConfig = {
   site: {
     baseURL: "https://www.mycarfax.com",
-    failureThresholdPercentage: 40,
+    failureThresholdPercentage: 60,
     routes: ["", "/help/faq"]
   }
 };
@@ -175,6 +176,7 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
         );
 
         let passed = true;
+        let failureThreshold = 0;
 
         const successPercent =
           100 - parseInt(resembleOutput.misMatchPercentage);
@@ -184,20 +186,7 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
           successPercent < activeConfig.failureThresholdPercentage
         ) {
           passed = false;
-        }
-
-        if (activeConfig.failureThresholdPercentage) {
-          console.log("activeConfig.failureThresholdPercentage");
-          console.log(
-            typeof successPercent,
-            typeof activeConfig.failureThresholdPercentage
-          );
-          console.log(successPercent, activeConfig.failureThresholdPercentage);
-          console.log(successPercent < activeConfig.failureThresholdPercentage);
-        }
-
-        if (typeof route !== "string") {
-          console.log(route.failureThresholdPercentage);
+          failureThreshold = activeConfig.failureThresholdPercentage;
         }
 
         if (
@@ -206,12 +195,14 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
           successPercent < route.failureThresholdPercentage
         ) {
           passed = false;
+          failureThreshold = route.failureThresholdPercentage;
         }
 
         allResults.push({
           successPercent,
           resembleOutput,
           passed,
+          failureThreshold,
           routePath,
           activeConfig
         });
@@ -230,7 +221,9 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
     .filter(r => !r.passed)
     .forEach(r => {
       message += `${r.activeConfig.baseURL}${r.routePath} Failed:\n`;
-      message += `${r.successPercent}% similar to yesterday\n`;
+      message += `${r.successPercent}% similar to yesterday, threshold is ${
+        r.failureThreshold
+      }%\n`;
     });
 
   console.log(message);
