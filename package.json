@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@serverless-chrome/lambda": "^1.0.0-55",
+    "aws-sdk": "^2.423.0",
     "puppeteer": "^1.13.0",
     "serverless": "^1.39.1",
     "superagent": "^4.1.0",
