@@ -17,8 +17,8 @@ provider:
 
 functions:
   hello:
-    handler: handler.hello
+    handler: handler.daily
     events:
       - http:
           method: get
-          path: hello
+          path: daily

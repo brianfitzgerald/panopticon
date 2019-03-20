@@ -3,17 +3,53 @@ import * as launchChrome from "@serverless-chrome/lambda";
 import * as request from "superagent";
 import * as puppeteer from "puppeteer";
 import * as AWS from "aws-sdk";
+const compare = require("resemblejs").compare;
 
-const config = {
-  baseUrl: "https://www.mycarfax.com",
-  routes: [
-    {
-      route: ""
-    },
-    {
-      route: "/help/faq"
-    }
-  ]
+type ResembleOutput = {
+  isSameDimensions: boolean;
+  dimensionDifference: { width: number; height: number };
+  rawMisMatchPercentage: number;
+  misMatchPercentage: string;
+  diffBounds: { top: number; left: number; bottom: number; right: number };
+  analysisTime: number;
+  getImageDataUrl: [Function];
+};
+
+type RouteOutput = {
+  route: string;
+  baseURL: string;
+  resembleOutput: ResembleOutput;
+};
+
+type PanopticonConfig = {
+  site: ConfigObject;
+  configs?: ConfigObject[];
+};
+
+type Route = {
+  route: string;
+  timeout?: number;
+  delay?: number;
+  compareThreshold?: number;
+};
+
+type ConfigObject = {
+  baseURL: string;
+  routes: Route[];
+};
+
+const config: PanopticonConfig = {
+  site: {
+    baseURL: "https://www.mycarfax.com",
+    routes: [
+      {
+        route: ""
+      },
+      {
+        route: "/help/faq"
+      }
+    ]
+  }
 };
 
 const getChrome = async () => {
@@ -32,13 +68,16 @@ const getChrome = async () => {
 };
 
 const getPicturePath = (baseUrl: string, route: string): string => {
-  const url = `${config.baseUrl}${route}`;
+  const url = `${baseUrl}${route}`;
   let path = url.split("//")[1];
   path = path.split("/").join(":");
   return path;
 };
 
-export const hello: APIGatewayProxyHandler = async (event, context) => {
+// take a screenshot for each page
+// compare against the previous day page
+// return stats for each page
+export const daily: APIGatewayProxyHandler = async (event, context) => {
   if (process.env.IS_OFFLINE) {
     var credentials = new AWS.SharedIniFileCredentials({
       profile: "cxd-development"
@@ -58,51 +97,76 @@ export const hello: APIGatewayProxyHandler = async (event, context) => {
 
   const bucketName = "panopticon-photos";
 
-  // take photos
+  // TODO: add support for parsing multiple configs
+  const activeConfig = config.site;
+
+  const allResults: RouteOutput[] = [];
 
   await Promise.all(
-    config.routes.map(async route => {
-      let path = getPicturePath(config.baseUrl, route.route);
-      const url = `${config.baseUrl}${route}`;
+    activeConfig.routes.map(async route => {
+      const path = getPicturePath(activeConfig.baseURL, route.route);
+      const url = `${activeConfig.baseURL}${route.route}`;
       await page.goto(url);
       const screenshot = await page.screenshot({
         fullPage: true
       });
-      const date = new Date().toISOString().split("T")[0];
-      console.log(date);
-      path = `${path}/${date}.png`;
-      console.log(path);
+      const currentDayString = new Date().toISOString().split("T")[0];
+      const currentDayPath = `${path}/${currentDayString}.png`;
 
-      await s3
-        .putObject({
-          Bucket: bucketName,
-          Key: path,
-          Body: screenshot
-        })
-        .promise();
+      const previousDay = new Date();
+      previousDay.setDate(previousDay.getDate() - 1);
+      const previousDayString = previousDay.toISOString().split("T")[0];
+
+      const previousDayPath = `${path}/${previousDayString}.png`;
+
+      try {
+        await s3
+          .putObject({
+            Bucket: bucketName,
+            Key: currentDayPath,
+            Body: screenshot
+          })
+          .promise();
+
+        const previousDayScreenshot = await s3
+          .getObject({
+            Bucket: bucketName,
+            Key: previousDayPath
+          })
+          .promise();
+
+        if (!previousDayScreenshot.Body) {
+          return;
+        }
+
+        const resembleOutput = await compareScreens(
+          previousDayScreenshot.Body,
+          screenshot,
+          {
+            returnEarlyThreshold: 50
+          }
+        );
+
+        allResults.push({
+          baseURL: activeConfig.baseURL,
+          route: route.route,
+          resembleOutput
+        });
+      } catch (e) {
+        console.error(e);
+      }
     })
   );
 
-  // compare against previous day
-
-  await Promise.all(
-    config.routes.map(async route => {
-      const url = `${config.baseUrl}${route.route}`;
-      let path = url.split("//")[1];
-      path = path.split("/").join(":");
-      console.log(url);
-      console.log(path);
-
-      const picture = await s3
-        .getObject({
-          Bucket: bucketName,
-          Key: path
-        })
-        .promise();
-
-      console.log(picture.Body);
-    })
-  );
+  console.log("Results:");
+  allResults.forEach(r => {
+    console.log(`${r.baseURL}${r.route}:`);
+    const percentSimilar = 100 - parseInt(r.resembleOutput.misMatchPercentage);
+    console.log(`${percentSimilar}% Similar`);
+    if (percentSimilar < 50) {
+      console.log("Warning raised");
+    }
+  });
 
   await browser.close();
 
@@ -114,3 +178,29 @@ export const hello: APIGatewayProxyHandler = async (event, context) => {
     })
   };
 };
+
+type Screen = AWS.S3.Body | Buffer;
+
+// wrap the compare call because SOME LIBRARIES don't support promises for their callbacks
+async function compareScreens(
+  screen1: Screen,
+  screen2: Screen,
+  params: Object
+): Promise<ResembleOutput> {
+  return new Promise((resolve, reject) => {
+    compare(
+      screen1,
+      screen2,
+      {
+        returnEarlyThreshold: 50
+      },
+      (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      }
+    );
+  });
+}
