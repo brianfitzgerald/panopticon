@@ -4,6 +4,7 @@ import * as request from "superagent";
 import * as puppeteer from "puppeteer";
 import * as AWS from "aws-sdk";
 const compare = require("resemblejs").compare;
+import { WebClient } from "@slack/client";
 
 type ResembleOutput = {
   isSameDimensions: boolean;
@@ -38,7 +39,7 @@ type ConfigObject = {
   routes: Route[];
 };
 
-const config: PanopticonConfig = {
+const exampleConfig: PanopticonConfig = {
   site: {
     baseURL: "https://www.mycarfax.com",
     routes: [
@@ -52,6 +53,33 @@ const config: PanopticonConfig = {
   }
 };
 
+type Screen = AWS.S3.Body | Buffer;
+
+// wrap the compare call because SOME LIBRARIES don't support promises for their callbacks
+async function compareScreens(
+  screen1: Screen,
+  screen2: Screen,
+  params: Object
+): Promise<ResembleOutput> {
+  return new Promise((resolve, reject) => {
+    compare(
+      screen1,
+      screen2,
+      {
+        returnEarlyThreshold: 50
+      },
+      (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      }
+    );
+  });
+}
+
+// launch and return a headless chrome instance for puppeteer
 const getChrome = async () => {
   const chrome = await launchChrome();
 
@@ -67,6 +95,7 @@ const getChrome = async () => {
   };
 };
 
+// format the S3 picture key
 const getPicturePath = (baseUrl: string, route: string): string => {
   const url = `${baseUrl}${route}`;
   let path = url.split("//")[1];
@@ -98,7 +127,7 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
   const bucketName = "panopticon-photos";
 
   // TODO: add support for parsing multiple configs
-  const activeConfig = config.site;
+  const activeConfig = exampleConfig.site;
 
   const allResults: RouteOutput[] = [];
 
@@ -158,49 +187,25 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
     })
   );
 
-  console.log("Results:");
+  let message = "Results:\n";
   allResults.forEach(r => {
-    console.log(`${r.baseURL}${r.route}:`);
+    message += `${r.baseURL}${r.route}:\n`;
     const percentSimilar = 100 - parseInt(r.resembleOutput.misMatchPercentage);
-    console.log(`${percentSimilar}% Similar`);
+    message += `${percentSimilar}% Similar\n`;
     if (percentSimilar < 50) {
-      console.log("Warning raised");
+      message += "Warning for this page\n";
     }
   });
+
+  console.log(message);
 
   await browser.close();
 
   return {
     statusCode: 200,
     body: JSON.stringify({
-      message: "Yeet",
+      message,
       input: event
     })
   };
 };
-
-type Screen = AWS.S3.Body | Buffer;
-
-// wrap the compare call because SOME LIBRARIES don't support promises for their callbacks
-async function compareScreens(
-  screen1: Screen,
-  screen2: Screen,
-  params: Object
-): Promise<ResembleOutput> {
-  return new Promise((resolve, reject) => {
-    compare(
-      screen1,
-      screen2,
-      {
-        returnEarlyThreshold: 50
-      },
-      (err, data) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(data);
-        }
-      }
-    );
-  });
-}
