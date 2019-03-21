@@ -4,7 +4,8 @@ import * as request from "superagent";
 import * as puppeteer from "puppeteer";
 import * as AWS from "aws-sdk";
 const compare = require("resemblejs").compare;
-import { WebClient } from "@slack/client";
+import { WebClient, IncomingWebhook } from "@slack/client";
+import { IncomingWebhookSendError } from "@slack/client/dist/IncomingWebhook";
 
 type ResembleOutput = {
   isSameDimensions: boolean;
@@ -228,25 +229,27 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
 
   console.log(message);
 
-  /*
-
   const slackToken = "";
-  const slackChannelID = "";
 
   const web = new WebClient(slackToken);
 
+  const webhookURL =
+    "https://hooks.slack.com/services/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";
+  const webhook = new IncomingWebhook(webhookURL, {
+    username: "Panopticon Bot",
+    channel: "mycarfax-alerts",
+    icon_emoji: ":brian_why:"
+  });
+
   try {
-    const slackResponse = await web.chat.postMessage({
-      channel: slackChannelID,
-      text: message
-    });
-
-    console.log(slackResponse);
+    const response = await webhook.send(message);
+    console.log(response.text);
   } catch (e) {
-    console.error(e);
+    const a = e as IncomingWebhookSendError;
+    console.error(a.code);
+    console.error(a.message);
+    console.error(a.errno);
   }
-
-  */
 
   return {
     statusCode: 200,
