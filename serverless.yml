@@ -16,9 +16,10 @@ provider:
   runtime: nodejs8.10
 
 functions:
-  hello:
+  daily:
     handler: handler.daily
     events:
       - http:
           method: get
           path: daily
+      - schedule: rate(daily)
