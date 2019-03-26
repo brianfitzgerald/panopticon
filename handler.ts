@@ -1,7 +1,6 @@
 import { APIGatewayProxyHandler } from "aws-lambda";
-import * as launchChrome from "@serverless-chrome/lambda";
-import * as request from "superagent";
-import * as puppeteer from "puppeteer";
+import * as puppeteer from "puppeteer-core";
+import * as chromium from "chrome-aws-lambda";
 import * as AWS from "aws-sdk";
 const compare = require("resemblejs").compare;
 import { WebClient, IncomingWebhook } from "@slack/client";
@@ -78,22 +77,6 @@ async function compareScreens(
   });
 }
 
-// launch and return a headless chrome instance for puppeteer
-const getChrome = async () => {
-  const chrome = await launchChrome();
-
-  const response = await request
-    .get(`${chrome.url}/json/version`)
-    .set("Content-Type", "application/json");
-
-  const endpoint = response.body.webSocketDebuggerUrl;
-
-  return {
-    endpoint,
-    instance: chrome
-  };
-};
-
 // format the S3 picture key
 const getPicturePath = (baseUrl: string, route: string): string => {
   const url = `${baseUrl}${route}`;
@@ -115,10 +98,11 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
 
   const s3 = new AWS.S3();
 
-  const chrome = await getChrome();
-
-  const browser = await puppeteer.connect({
-    browserWSEndpoint: chrome.endpoint
+  let browser = await puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath,
+    headless: chromium.headless
   });
 
   const page = await browser.newPage();

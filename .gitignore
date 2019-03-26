@@ -9,3 +9,5 @@ jspm_packages
 .webpack
 
 .build
+
+chrome-aws-lambda

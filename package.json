@@ -7,10 +7,10 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@serverless-chrome/lambda": "^1.0.0-55",
     "@slack/client": "^4.12.0",
     "aws-sdk": "^2.423.0",
-    "puppeteer": "^1.13.0",
+    "chrome-aws-lambda": "file:chrome-aws-lambda",
+    "puppeteer-core": "^1.13.0",
     "resemblejs": "^3.1.0",
     "serverless": "^1.39.1",
     "superagent": "^4.1.0",
@@ -22,7 +22,6 @@
     "@types/puppeteer": "^1.12.3",
     "chrome-launcher": "^0.10.5",
     "serverless-offline": "^4.9.1",
-    "serverless-plugin-chrome": "^1.0.0-55",
     "serverless-plugin-typescript": "^1.1.5",
     "serverless-webpack": "^5.1.1",
     "source-map-support": "^0.5.6",

@@ -5,7 +5,6 @@ service:
 plugins:
   - serverless-plugin-typescript
   - serverless-offline
-  - serverless-plugin-chrome
 
 package:
   exclude:
@@ -22,4 +21,8 @@ functions:
       - http:
           method: get
           path: daily
-      - schedule: rate(daily)
+      - schedule: rate(1 day)
+
+layers:
+  chrome:
+    path: layer
