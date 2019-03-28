@@ -1,10 +1,9 @@
 import { APIGatewayProxyHandler } from "aws-lambda";
-import * as puppeteer from "puppeteer-core";
-import * as chromium from "chrome-aws-lambda";
 import * as AWS from "aws-sdk";
 const compare = require("resemblejs").compare;
 import { WebClient, IncomingWebhook } from "@slack/client";
 import { IncomingWebhookSendError } from "@slack/client/dist/IncomingWebhook";
+import * as request from "superagent";
 
 type ResembleOutput = {
   isSameDimensions: boolean;
@@ -77,6 +76,8 @@ async function compareScreens(
   });
 }
 
+// run in batches of 5
+
 // format the S3 picture key
 const getPicturePath = (baseUrl: string, route: string): string => {
   const url = `${baseUrl}${route}`;
@@ -85,10 +86,52 @@ const getPicturePath = (baseUrl: string, route: string): string => {
   return path;
 };
 
+export const runScreenshotTests: APIGatewayProxyHandler = async (
+  event,
+  context
+) => {
+  try {
+    const response = await request
+      .post("https://crossbrowsertesting.com/api/v3/screenshots")
+      .send({
+        browser_list_name: "popular browsers",
+        delay: "3",
+        url: "https://www.mycarfax.com/help/faq",
+        format: "json"
+      })
+      .set("Authorization", "Basic Y2FyZmF4QGNhcmZheC5jb206Q0ZYd2ViNzEz")
+      .set("Content-Type", "application/json; charset=utf-8")
+      .set(
+        "Cookie",
+        "__cfduid=d8d95d516191d08065371adbedad684ca1553626901; SERVERID=s2"
+      )
+      .redirects(0);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: "screenshots requested",
+        response
+      })
+    };
+  } catch (e) {
+    return {
+      statusCode: 301,
+      body: JSON.stringify({
+        message: "fail",
+        error: e
+      })
+    };
+  }
+};
+
 // take a screenshot for each page
 // compare against the previous day page
 // return stats for each page
-export const daily: APIGatewayProxyHandler = async (event, context) => {
+export const saveScreenshots: APIGatewayProxyHandler = async (
+  event,
+  context
+) => {
   if (process.env.IS_OFFLINE) {
     var credentials = new AWS.SharedIniFileCredentials({
       profile: "cxd-development"
@@ -97,15 +140,6 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
   }
 
   const s3 = new AWS.S3();
-
-  let browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath,
-    headless: chromium.headless
-  });
-
-  const page = await browser.newPage();
 
   const bucketName = "panopticon-photos";
 
@@ -119,10 +153,6 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
       const routePath = typeof route == "string" ? route : route.route;
       const path = getPicturePath(activeConfig.baseURL, routePath);
       const url = `${activeConfig.baseURL}${route}`;
-      await page.goto(url);
-      const screenshot = await page.screenshot({
-        fullPage: true
-      });
       const currentDayString = new Date().toISOString().split("T")[0];
       const currentDayPath = `${path}/${currentDayString}.png`;
 
@@ -131,6 +161,8 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
       const previousDayString = previousDay.toISOString().split("T")[0];
 
       const previousDayPath = `${path}/${previousDayString}.png`;
+
+      const screenshot = "";
 
       try {
         await s3
@@ -196,8 +228,6 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
       }
     })
   );
-
-  await browser.close();
 
   let message = "Results:\n";
   const successful = allResults.filter(r => r.passed).length;
