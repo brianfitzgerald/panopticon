@@ -9,3 +9,6 @@ jspm_packages
 .webpack
 
 .build
+
+layer/
+*.zip

@@ -4,12 +4,16 @@ service:
 # Add the serverless-webpack plugin
 plugins:
   - serverless-plugin-typescript
-  - serverless-offline
+  - serverless-plugin-include-dependencies
   - serverless-plugin-chrome
+  - serverless-offline
 
 package:
   exclude:
-    - node_modules/puppeteer/.local-chromium/** # exclude puppeteer chrome if exists
+    - node_modules/puppeteer/.local-chromium/**
+    - node_modules/@serverless-chrome/lambda/dist/headless-chromium
+    - node_modules/phantomjs-prebuilt
+    - layer/**
 
 provider:
   name: aws
@@ -22,4 +26,11 @@ functions:
       - http:
           method: get
           path: daily
-      - schedule: rate(daily)
+      - schedule: rate(1 day)
+    layers:
+      - { Ref: ChromeLambdaLayer }
+
+layers:
+  chrome:
+    package:
+      artifact: layer.zip
