@@ -1,6 +1,5 @@
 import { APIGatewayProxyHandler } from "aws-lambda";
 import * as puppeteer from "puppeteer-core";
-import * as chromium from "chrome-aws-lambda";
 import * as AWS from "aws-sdk";
 const compare = require("resemblejs").compare;
 import { WebClient, IncomingWebhook } from "@slack/client";
@@ -99,10 +98,9 @@ export const daily: APIGatewayProxyHandler = async (event, context) => {
   const s3 = new AWS.S3();
 
   let browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath,
-    headless: chromium.headless
+    headless: true,
+    executablePath: "/opt/headless_shell",
+    args: ["--no-sandbox", "--disable-gpu", "--single-process"]
   });
 
   const page = await browser.newPage();

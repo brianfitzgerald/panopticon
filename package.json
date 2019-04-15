@@ -9,7 +9,6 @@
   "dependencies": {
     "@slack/client": "^4.12.0",
     "aws-sdk": "^2.423.0",
-    "chrome-aws-lambda": "file:chrome-aws-lambda",
     "puppeteer-core": "^1.13.0",
     "resemblejs": "^3.1.0",
     "serverless": "^1.39.1",

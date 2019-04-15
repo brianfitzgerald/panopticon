@@ -22,7 +22,10 @@ functions:
           method: get
           path: daily
       - schedule: rate(1 day)
+    layers:
+      - { Ref: ChromeLambdaLayer }
 
 layers:
   chrome:
-    path: layer
+    package:
+      artifact: headless_chrome.zip
